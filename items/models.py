@@ -55,10 +55,20 @@ class BaseModel(models.Model):
 #     id SERIAL PRIMARY KEY,
 #     item_id INT NOT NULL,
 #     image_url VARCHAR(255) NOT NULL,  -- URL to externally stored image
-#     quality VARCHAR(10) NOT NULL,  -- 'low', 'medium', 'high'
+#     quality VARCHAR(10) NOT NULL,  -- 'low', 'medium'
 #     is_primary BOOLEAN DEFAULT FALSE,  -- Marks the main image for display
 #     FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
 # );
+
+# -- Detail images table (one-to-many with items, for images of different qualities)
+# CREATE TABLE detail_images (
+#     id SERIAL PRIMARY KEY,
+#     item_id INT NOT NULL,
+#     image_url VARCHAR(255) NOT NULL,  -- URL to externally stored image
+#     display_order INT NOT NULL,  -- To control the order of detail images
+#     FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+# );
+
 
 class Category(BaseModel):
     name = models.CharField(max_length=255) # Corresponds to VARCHAR(255) NOT NULL
@@ -152,7 +162,6 @@ class ItemImage(BaseModel): # One-to-many with Item
     QUALITY_CHOICES = [
         ('low', 'Low'),
         ('medium', 'Medium'),
-        ('high', 'High'),
     ]
     quality = models.CharField(
         max_length=10,
@@ -167,3 +176,21 @@ class ItemImage(BaseModel): # One-to-many with Item
     class Meta:
         verbose_name_plural = "Item Images"
         db_table = 'images' # Match SQL comment
+
+class DetailImage(BaseModel):
+    item = models.ForeignKey(
+        Item,
+        on_delete=models.CASCADE,
+        related_name='detail_images',
+        db_constraint=False
+    )
+    image_url = models.URLField(max_length=255)
+    display_order = models.IntegerField(default=0)  # To control the order of detail images
+
+    def __str__(self):
+        return f"{self.item.name} - Detail Image {self.display_order}"
+
+    class Meta:
+        verbose_name_plural = "Detail Images"
+        db_table = 'detail_images'
+        ordering = ['display_order']  # Default ordering by display_order

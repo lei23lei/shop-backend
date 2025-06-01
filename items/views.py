@@ -17,6 +17,26 @@ class CustomPagination(PageNumberPagination):
 class ItemView(APIView):
     pagination_class = CustomPagination
 
+    def get_all_subcategories(self, category_ids):
+        """
+        Recursively get all subcategories for given category IDs
+        """
+        all_categories = set(category_ids)
+        to_process = list(category_ids)
+        
+        while to_process:
+            current_ids = to_process
+            # Find all direct children of current categories
+            subcategories = Category.objects.filter(parent_category_id__in=current_ids)
+            to_process = []
+            
+            for subcat in subcategories:
+                if subcat.id not in all_categories:
+                    all_categories.add(subcat.id)
+                    to_process.append(subcat.id)
+                    
+        return list(all_categories)
+
     def get(self, request):
         """
         Get items with optional filtering and only low quality images
@@ -31,10 +51,17 @@ class ItemView(APIView):
             )
         ).select_related('details').all()
 
-        # Category filter
-        category_id = request.query_params.get('category')
-        if category_id:
-            queryset = queryset.filter(categories__id=category_id)
+        # Category filter with subcategories support
+        category_ids = request.query_params.getlist('category')
+        if category_ids:
+            try:
+                # Convert string IDs to integers
+                category_ids = [int(cid) for cid in category_ids]
+                # Get all subcategories including the original categories
+                all_category_ids = self.get_all_subcategories(category_ids)
+                queryset = queryset.filter(categories__id__in=all_category_ids).distinct()
+            except ValueError:
+                pass  # Invalid category ID format, ignore filter
 
         # Search filter
         search = request.query_params.get('search')
@@ -71,4 +98,83 @@ class ItemView(APIView):
         paginated_queryset = paginator.paginate_queryset(queryset, request)
         
         serializer = ItemSerializer(paginated_queryset, many=True)
-        return paginator.get_paginated_response(serializer.data) 
+        return paginator.get_paginated_response(serializer.data)
+
+class ItemDetailView(APIView):
+    def get(self, request, item_id):
+        try:
+            # Get item with all related data in a single query
+            item = Item.objects.prefetch_related(
+                'details',
+                'sizes',
+                Prefetch(
+                    'images',
+                    queryset=ItemImage.objects.filter(quality='medium')
+                ),
+                'detail_images',
+                'categories'
+            ).get(id=item_id)
+
+            # Serialize the data
+            data = {
+                'id': item.id,
+                'name': item.name,
+                'price': str(item.price),
+                'description': item.description,
+                'created_at': item.created_at,
+                'updated_at': item.updated_at,
+                
+                # Get categories
+                'categories': [
+                    {'id': cat.id, 'name': cat.name}
+                    for cat in item.categories.all()
+                ],
+                
+                # Get details (one-to-one)
+                'details': {
+                    'color': item.details.color,
+                    'detail': item.details.detail
+                } if hasattr(item, 'details') else None,
+                
+                # Get sizes (one-to-many)
+                'sizes': [
+                    {
+                        'size': size.size,
+                        'quantity': size.quantity
+                    }
+                    for size in item.sizes.all()
+                ],
+                
+                # Get medium quality images
+                'images': [
+                    {
+                        'id': img.id,
+                        'image_url': img.image_url,
+                        'is_primary': img.is_primary
+                    }
+                    for img in item.images.all()
+                ],
+                
+                # Get detail images
+                'detail_images': [
+                    {
+                        'id': img.id,
+                        'image_url': img.image_url,
+                        'display_order': img.display_order
+                    }
+                    for img in item.detail_images.all()
+                ]
+            }
+            
+            return Response(data)
+            
+        except Item.DoesNotExist:
+            return Response(
+                {'error': 'Item not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            ) 
