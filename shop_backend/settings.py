@@ -77,15 +77,15 @@ WSGI_APPLICATION = "shop_backend.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.mysql",
+        "ENGINE": "django.db.backends.postgresql",
         "NAME": "myshop",
-        "USER": "root",
-        "PASSWORD": "12345678a",
+        "USER": "postgres",
+        "PASSWORD": "12345678",  # The password you used when creating the database
         "HOST": "localhost",
-        "PORT": "3306",
+        "PORT": "5432",  # Changed from 5433 to default PostgreSQL port
         "OPTIONS": {
-            "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
-            "charset": "utf8mb4",
+            "connect_timeout": 10,
+            "sslmode": "prefer",
         }
     }
 }

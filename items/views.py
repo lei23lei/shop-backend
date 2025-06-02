@@ -5,8 +5,9 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Prefetch
-from .models import Item, Category, ItemImage
-from .serializers import ItemSerializer, CategorySerializer, RecentItemSerializer
+from .models import Item, Category, ItemImage, ItemDetail, ItemSize, DetailImage
+from .serializers import ItemSerializer
+from django.db import transaction
 
 # Create your views here.
 class CustomPagination(PageNumberPagination):
@@ -99,6 +100,104 @@ class ItemView(APIView):
         
         serializer = ItemSerializer(paginated_queryset, many=True)
         return paginator.get_paginated_response(serializer.data)
+
+    def post(self, request):
+        try:
+            # Start a transaction to ensure all related data is created or none
+            with transaction.atomic():
+                # 1. Create the main item
+                item = Item.objects.create(
+                    name=request.data['name'],
+                    price=request.data['price'],
+                    description=request.data['description']
+                )
+
+                # 2. Create item details (one-to-one)
+                ItemDetail.objects.create(
+                    item=item,
+                    color=request.data['color'],
+                    detail=request.data['detail']
+                )
+
+                # 3. Create sizes (one-to-many)
+                for size_data in request.data['sizes']:
+                    ItemSize.objects.create(
+                        item=item,
+                        size=size_data['size'],
+                        quantity=size_data['quantity']
+                    )
+
+                # 4. Create images
+                # Create display image (low quality, primary)
+                if 'displayImage' in request.data:
+                    ItemImage.objects.create(
+                        item=item,
+                        image_url=request.data['displayImage'],
+                        quality='low',
+                        is_primary=True
+                    )
+
+                # Create other images (medium quality)
+                for image_url in request.data['images']:
+                    ItemImage.objects.create(
+                        item=item,
+                        image_url=image_url,
+                        quality='medium',
+                        is_primary=False
+                    )
+
+                # Create detail images if any
+                for idx, image_url in enumerate(request.data.get('detailImages', [])):
+                    DetailImage.objects.create(
+                        item=item,
+                        image_url=image_url,
+                        display_order=idx
+                    )
+
+                # 5. Add categories (many-to-many)
+                item.categories.add(*request.data['categories'])
+
+                # 6. Return the created item data
+                response_data = {
+                    'id': item.id,
+                    'name': item.name,
+                    'price': str(item.price),
+                    'description': item.description,
+                    'categories': list(item.categories.values('id', 'name')),
+                    'details': {
+                        'color': request.data['color'],
+                        'detail': request.data['detail']
+                    },
+                    'sizes': request.data['sizes'],
+                    'images': [
+                        {
+                            'image_url': img.image_url,
+                            'is_primary': img.is_primary,
+                            'quality': img.quality
+                        }
+                        for img in item.images.all()
+                    ],
+                    'detail_images': [
+                        {
+                            'image_url': img.image_url,
+                            'display_order': img.display_order
+                        }
+                        for img in item.detail_images.all()
+                    ]
+                }
+
+                return Response(response_data, status=status.HTTP_201_CREATED)
+
+        except KeyError as e:
+            return Response(
+                {'error': f'Missing required field: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class ItemDetailView(APIView):
     def get(self, request, item_id):
