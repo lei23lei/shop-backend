@@ -100,8 +100,12 @@ class BaseModel(models.Model):
         
 
 class User(AbstractUser, BaseModel):
+    email = models.EmailField(unique=True, null=False, blank=False)
+    first_name = models.CharField(max_length=150, null=True, blank=True)
+    last_name = models.CharField(max_length=150, null=True, blank=True)
     phone_number = models.CharField(max_length=20, null=True, blank=True)
     address = models.TextField(null=True, blank=True)
+    is_superuser = models.BooleanField(default=False, help_text='Designates whether this user has all permissions without explicitly assigning them.')
 
     def __str__(self):
         return self.username
