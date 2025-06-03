@@ -74,22 +74,24 @@ WSGI_APPLICATION = "shop_backend.wsgi.application"
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
+import os
+from dotenv import load_dotenv
+from urllib.parse import urlparse
+
+load_dotenv()
+
+tmpPostgres = urlparse(os.getenv("DATABASE_URL"))
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "myshop",
-        "USER": "postgres",
-        "PASSWORD": "12345678",  # The password you used when creating the database
-        "HOST": "localhost",
-        "PORT": "5432",  # Changed from 5433 to default PostgreSQL port
-        "OPTIONS": {
-            "connect_timeout": 10,
-            "sslmode": "prefer",
-        }
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': tmpPostgres.path.replace('/', ''),
+        'USER': tmpPostgres.username,
+        'PASSWORD': tmpPostgres.password,
+        'HOST': tmpPostgres.hostname,
+        'PORT': 5432,  # Or use tmpPostgres.port if your Neon DB uses a non-standard port
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
