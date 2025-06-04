@@ -178,3 +178,4 @@ SIMPLE_JWT = {
 
     'JTI_CLAIM': 'jti',
 }
+

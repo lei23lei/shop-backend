@@ -1,0 +1,9 @@
+INFO 2025-06-04 01:12:20,484 autoreload Watching for file changes with StatReloader
+INFO 2025-06-04 01:12:34,043 autoreload /Users/peter/Desktop/peter's shop/shop_backend/users/views.py changed, reloading.
+INFO 2025-06-04 01:12:34,368 autoreload Watching for file changes with StatReloader
+INFO 2025-06-04 01:12:53,024 autoreload /Users/peter/Desktop/peter's shop/shop_backend/users/views.py changed, reloading.
+INFO 2025-06-04 01:12:53,382 autoreload Watching for file changes with StatReloader
+INFO 2025-06-04 01:13:01,802 autoreload /Users/peter/Desktop/peter's shop/shop_backend/shop_backend/settings.py changed, reloading.
+INFO 2025-06-04 01:13:02,041 autoreload Watching for file changes with StatReloader
+INFO 2025-06-04 01:13:10,583 basehttp "POST /api/forgot-password/ HTTP/1.1" 200 81
+INFO 2025-06-04 01:16:17,645 autoreload /Users/peter/Desktop/peter's shop/shop_backend/shop_backend/settings.py changed, reloading.
