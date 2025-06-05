@@ -100,6 +100,7 @@ class BaseModel(models.Model):
         
 
 class User(AbstractUser, BaseModel):
+    username = models.CharField(max_length=150, unique=True, null=False, blank=False)
     email = models.EmailField(unique=True, null=False, blank=False)
     first_name = models.CharField(max_length=150, null=True, blank=True)
     last_name = models.CharField(max_length=150, null=True, blank=True)
