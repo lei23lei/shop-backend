@@ -67,10 +67,14 @@ from items.models import Item, ItemSize
 # -- Orders table
 # CREATE TABLE orders (
 #     id SERIAL PRIMARY KEY,
-#     user_id INT NOT NULL,
+#     user_id INT,  -- Optional, allows guest orders
 #     status VARCHAR(50) NOT NULL,  -- e.g., 'Pending', 'Processing', 'Shipped', 'Delivered'
 #     total_price DECIMAL(10, 2) NOT NULL,  -- Total cost of order
 #     shipping_address TEXT NOT NULL,  -- Address for delivery
+#     shipping_phone VARCHAR(20) NOT NULL,  -- Contact phone for delivery
+#     shipping_name VARCHAR(255) NOT NULL,  -- Name of the person receiving the order
+#     shipping_email VARCHAR(255) NOT NULL,  -- Email for order updates
+#     guest_email VARCHAR(255),  -- Optional email for guest users to track orders
 #     created_at TIMESTAMP NOT NULL,
 #     updated_at TIMESTAMP NOT NULL,
 #     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -156,13 +160,28 @@ class Order(BaseModel):
         ('Delivered', 'Delivered'),
     ]
     
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE,
+        null=True,  # Allow null for guest orders
+        blank=True  # Allow blank in forms
+    )
     status = models.CharField(max_length=50, choices=STATUS_CHOICES)
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    # Shipping information
     shipping_address = models.TextField()
+    shipping_phone = models.CharField(max_length=20, default='0000000000')  # Required with default
+    shipping_name = models.CharField(max_length=255, default='Guest')  # Required with default
+    shipping_email = models.EmailField(default='guest@example.com')  # Required with default
+    
+    # Optional fields for guest users
+    guest_email = models.EmailField(null=True, blank=True)  # For guest users to track their order
 
     def __str__(self):
-        return f"Order {self.id} - {self.user.username}"
+        if self.user:
+            return f"Order {self.id} - {self.user.username}"
+        return f"Order {self.id} - Guest ({self.shipping_email})"
 
 
 class OrderItem(BaseModel):
