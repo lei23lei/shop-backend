@@ -276,4 +276,36 @@ class ItemDetailView(APIView):
             return Response(
                 {'error': str(e)}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def delete(self, request, item_id):
+        """
+        Delete an item and all its related data
+        """
+        try:
+            # Start a transaction to ensure all related data is deleted or none
+            with transaction.atomic():
+                # Get the item
+                item = Item.objects.get(id=item_id)
+                
+                # Store item name for response
+                item_name = item.name
+                
+                # Delete the item (this will cascade delete all related data due to CASCADE in models)
+                item.delete()
+                
+                return Response(
+                    {'message': f'Item "{item_name}" has been successfully deleted'},
+                    status=status.HTTP_200_OK
+                )
+                
+        except Item.DoesNotExist:
+            return Response(
+                {'error': 'Item not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             ) 
