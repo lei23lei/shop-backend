@@ -235,9 +235,10 @@ class ItemDetailView(APIView):
                     'detail': item.details.detail
                 } if hasattr(item, 'details') else None,
                 
-                # Get sizes (one-to-many)
+                # Get sizes (one-to-many) with their IDs and quantities
                 'sizes': [
                     {
+                        'id': size.id,  # Added size ID for cart operations
                         'size': size.size,
                         'quantity': size.quantity
                     }

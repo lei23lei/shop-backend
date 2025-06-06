@@ -2,7 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth.hashers import make_password, check_password
-from .models import User, PasswordResetToken
+from .models import User, PasswordResetToken, Cart, CartItem, Item, ItemSize
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import IsAuthenticated
@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import secrets
 import resend
 import logging
+from django.db import models
 
 logger = logging.getLogger(__name__)
 
@@ -257,6 +258,217 @@ class ResetPasswordView(APIView):
             
             return Response({
                 "message": "Password has been reset successfully"
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+class CartView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Get the user's cart items"""
+        try:
+            # Get or create cart for the user
+            cart, created = Cart.objects.get_or_create(user=request.user)
+            
+            # Get all cart items with related item and size information
+            cart_items = CartItem.objects.filter(cart=cart).select_related(
+                'item', 'size'
+            ).prefetch_related(
+                'item__images',
+                'item__details'
+            )
+            
+            # Format the response
+            items = []
+            for cart_item in cart_items:
+                item = cart_item.item
+                items.append({
+                    'id': cart_item.id,
+                    'item': {
+                        'id': item.id,
+                        'name': item.name,
+                        'price': str(item.price),
+                        'description': item.description,
+                        'images': [
+                            {
+                                'image_url': img.image_url,
+                                'is_primary': img.is_primary,
+                                'quality': img.quality
+                            }
+                            for img in item.images.filter(quality='low')
+                        ],
+                        'details': {
+                            'color': item.details.color if hasattr(item, 'details') else None,
+                            'detail': item.details.detail if hasattr(item, 'details') else None
+                        }
+                    },
+                    'size': {
+                        'id': cart_item.size.id,
+                        'size': cart_item.size.size
+                    },
+                    'quantity': cart_item.quantity
+                })
+            
+            return Response({
+                'items': items,
+                'total_items': len(items)
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    def post(self, request):
+        """Add an item to the cart"""
+        try:
+            # Validate required fields
+            if not all(k in request.data for k in ['item_id', 'size_id', 'quantity']):
+                return Response(
+                    {"error": "item_id, size_id, and quantity are required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get or create cart for the user
+            cart, created = Cart.objects.get_or_create(user=request.user)
+            
+            # Get the item and size
+            try:
+                item = Item.objects.get(id=request.data['item_id'])
+                size = ItemSize.objects.get(id=request.data['size_id'])
+            except (Item.DoesNotExist, ItemSize.DoesNotExist):
+                return Response(
+                    {"error": "Invalid item or size"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if item already exists in cart
+            cart_item, created = CartItem.objects.get_or_create(
+                cart=cart,
+                item=item,
+                size=size,
+                defaults={'quantity': request.data['quantity']}
+            )
+            
+            # If item exists, handle quantity based on add parameter
+            if not created:
+                if request.data.get('add', False):  # Default to False (replace)
+                    cart_item.quantity += int(request.data['quantity'])
+                else:
+                    cart_item.quantity = int(request.data['quantity'])
+                cart_item.save()
+            
+            return Response({
+                "message": "Item added to cart successfully",
+                "cart_item": {
+                    "id": cart_item.id,
+                    "quantity": cart_item.quantity
+                }
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    def put(self, request):
+        """Update cart item quantity"""
+        try:
+            # Validate required fields
+            if not all(k in request.data for k in ['cart_item_id', 'quantity']):
+                return Response(
+                    {"error": "cart_item_id and quantity are required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get the cart item
+            try:
+                cart_item = CartItem.objects.get(
+                    id=request.data['cart_item_id'],
+                    cart__user=request.user
+                )
+            except CartItem.DoesNotExist:
+                return Response(
+                    {"error": "Cart item not found"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Update quantity
+            cart_item.quantity = int(request.data['quantity'])
+            cart_item.save()
+            
+            return Response({
+                "message": "Cart item updated successfully",
+                "cart_item": {
+                    "id": cart_item.id,
+                    "quantity": cart_item.quantity
+                }
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    def delete(self, request):
+        """Remove an item from the cart"""
+        try:
+            cart_item_id = request.query_params.get('cart_item_id')
+            if not cart_item_id:
+                return Response(
+                    {"error": "cart_item_id is required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get the cart item
+            try:
+                cart_item = CartItem.objects.get(
+                    id=cart_item_id,
+                    cart__user=request.user
+                )
+            except CartItem.DoesNotExist:
+                return Response(
+                    {"error": "Cart item not found"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Delete the cart item
+            cart_item.delete()
+            
+            return Response({
+                "message": "Item removed from cart successfully"
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+class CartCountView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Get the total number of items in the user's cart"""
+        try:
+            # Get or create cart for the user
+            cart, created = Cart.objects.get_or_create(user=request.user)
+            
+            # Get total quantity of all items in cart
+            total_items = CartItem.objects.filter(cart=cart).aggregate(
+                total_quantity=models.Sum('quantity')
+            )['total_quantity'] or 0
+            
+            return Response({
+                'total_items': total_items
             }, status=status.HTTP_200_OK)
             
         except Exception as e:
