@@ -74,6 +74,10 @@ from items.models import Item, ItemSize
 #     shipping_phone VARCHAR(20) NOT NULL,  -- Contact phone for delivery
 #     shipping_name VARCHAR(255) NOT NULL,  -- Name of the person receiving the order
 #     shipping_email VARCHAR(255) NOT NULL,  -- Email for order updates
+#     first_name VARCHAR(150) NOT NULL,  -- First name for shipping
+#     last_name VARCHAR(150) NOT NULL,  -- Last name for shipping
+#     zip_code VARCHAR(20) NOT NULL,  -- ZIP/Postal code
+#     city VARCHAR(100) NOT NULL,  -- City for shipping
 #     guest_email VARCHAR(255),  -- Optional email for guest users to track orders
 #     created_at TIMESTAMP NOT NULL,
 #     updated_at TIMESTAMP NOT NULL,
@@ -88,6 +92,7 @@ from items.models import Item, ItemSize
 #     size_id INT NOT NULL,
 #     quantity INT NOT NULL,
 #     price_at_time DECIMAL(10, 2) NOT NULL,  -- Price at time of order
+#     primary_image VARCHAR(255) NOT NULL,  -- Primary image URL of the item
 #     created_at TIMESTAMP NOT NULL,
 #     updated_at TIMESTAMP NOT NULL,
 #     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
@@ -170,13 +175,19 @@ class Order(BaseModel):
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
     
     # Shipping information
-    shipping_address = models.TextField()
-    shipping_phone = models.CharField(max_length=20, default='0000000000')  # Required with default
-    shipping_name = models.CharField(max_length=255, default='Guest')  # Required with default
-    shipping_email = models.EmailField(default='guest@example.com')  # Required with default
+    shipping_address = models.TextField(default='')
+    shipping_phone = models.CharField(max_length=20, default='0000000000')
+    shipping_name = models.CharField(max_length=255, default='Guest')
+    shipping_email = models.EmailField(default='guest@example.com')
+    
+    # New shipping fields with defaults
+    first_name = models.CharField(max_length=150, default='')
+    last_name = models.CharField(max_length=150, default='')
+    zip_code = models.CharField(max_length=20, default='')
+    city = models.CharField(max_length=100, default='')
     
     # Optional fields for guest users
-    guest_email = models.EmailField(null=True, blank=True)  # For guest users to track their order
+    guest_email = models.EmailField(null=True, blank=True)
 
     def __str__(self):
         if self.user:
@@ -190,6 +201,7 @@ class OrderItem(BaseModel):
     size = models.ForeignKey(ItemSize, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField()
     price_at_time = models.DecimalField(max_digits=10, decimal_places=2)  # Price at time of order
+    primary_image = models.URLField(default='')  # Store the primary image URL with default empty string
 
     def __str__(self):
         return f"{self.quantity}x {self.item.name} ({self.size.name})"

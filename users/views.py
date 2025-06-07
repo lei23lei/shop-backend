@@ -2,7 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth.hashers import make_password, check_password
-from .models import User, PasswordResetToken, Cart, CartItem, Item, ItemSize
+from .models import User, PasswordResetToken, Cart, CartItem, Item, ItemSize, Order, OrderItem
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import IsAuthenticated
@@ -12,6 +12,7 @@ import secrets
 import resend
 import logging
 from django.db import models
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
@@ -280,41 +281,34 @@ class CartView(APIView):
                 'item', 'size'
             ).prefetch_related(
                 'item__images',
-                'item__details'
-            )
+                'item__categories'
+            ).order_by('-created_at')
             
             # Format the response
             items = []
             for cart_item in cart_items:
                 item = cart_item.item
+                # Get primary image
+                primary_image = item.images.filter(is_primary=True, quality='low').first()
+                
+                # Get all category names and combine them
+                category_names = item.categories.values_list('name', flat=True)
+                combined_categories = ', '.join(category_names) if category_names else None
+                
                 items.append({
-                    'id': cart_item.id,
-                    'item': {
-                        'id': item.id,
-                        'name': item.name,
-                        'price': str(item.price),
-                        'description': item.description,
-                        'images': [
-                            {
-                                'image_url': img.image_url,
-                                'is_primary': img.is_primary,
-                                'quality': img.quality
-                            }
-                            for img in item.images.filter(quality='low')
-                        ],
-                        'details': {
-                            'color': item.details.color if hasattr(item, 'details') else None,
-                            'detail': item.details.detail if hasattr(item, 'details') else None
-                        }
-                    },
-                    'size': {
-                        'id': cart_item.size.id,
-                        'size': cart_item.size.size
-                    },
-                    'quantity': cart_item.quantity
+                    'id': item.id,
+                    'cart_item_id': cart_item.id,
+                    'name': item.name,
+                    'price': str(item.price),
+                    'size': cart_item.size.size,
+                    'quantity': cart_item.quantity,
+                    'total_available': cart_item.size.quantity,
+                    'image_url': primary_image.image_url if primary_image else None,
+                    'categories': combined_categories
                 })
             
             return Response({
+                'cart_id': cart.id,
                 'items': items,
                 'total_items': len(items)
             }, status=status.HTTP_200_OK)
@@ -348,20 +342,40 @@ class CartView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
+            # Validate requested quantity against available stock
+            requested_quantity = int(request.data['quantity'])
+            if requested_quantity <= 0:
+                return Response(
+                    {"error": "Quantity must be greater than 0"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if requested_quantity > size.quantity:
+                return Response(
+                    {"error": f"Only {size.quantity} items available in size {size.size}"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
             # Check if item already exists in cart
             cart_item, created = CartItem.objects.get_or_create(
                 cart=cart,
                 item=item,
                 size=size,
-                defaults={'quantity': request.data['quantity']}
+                defaults={'quantity': requested_quantity}
             )
             
             # If item exists, handle quantity based on add parameter
             if not created:
-                if request.data.get('add', False):  # Default to False (replace)
-                    cart_item.quantity += int(request.data['quantity'])
-                else:
-                    cart_item.quantity = int(request.data['quantity'])
+                new_quantity = cart_item.quantity + requested_quantity if request.data.get('add', False) else requested_quantity
+                
+                # Check if new total quantity exceeds available stock
+                if new_quantity > size.quantity:
+                    return Response(
+                        {"error": f"Only {size.quantity} items available in size {size.size}"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                cart_item.quantity = new_quantity
                 cart_item.save()
             
             return Response({
@@ -477,3 +491,112 @@ class CartCountView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+class OrderView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
+    
+    def post(self, request):
+        """Create a new order from cart items"""
+        try:
+            # Get cart_id from request
+            cart_id = request.data.get('cart_id')
+            if not cart_id:
+                return Response(
+                    {"error": "cart_id is required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get user's cart
+            try:
+                cart = Cart.objects.get(id=cart_id, user=request.user)
+                cart_items = CartItem.objects.filter(cart=cart).select_related(
+                    'item', 'size'
+                ).prefetch_related(
+                    'item__images'
+                )
+            except Cart.DoesNotExist:
+                return Response(
+                    {"error": "Cart not found"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            if not cart_items.exists():
+                return Response(
+                    {"error": "Cart is empty"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Calculate total price
+            total_price = Decimal('0.00')
+            for cart_item in cart_items:
+                total_price += cart_item.item.price * cart_item.quantity
+            
+            # Create order
+            order = Order.objects.create(
+                user=request.user,
+                status='Pending',
+                total_price=total_price,
+                shipping_address=request.data.get('shipping_address', ''),
+                shipping_phone=request.data.get('shipping_phone', '0000000000'),
+                shipping_email=request.data.get('shipping_email', 'guest@example.com'),
+                first_name=request.data.get('first_name', ''),
+                last_name=request.data.get('last_name', ''),
+                zip_code=request.data.get('zip_code', ''),
+                city=request.data.get('city', '')
+            )
+            
+            # Create order items and update stock
+            order_items = []
+            for cart_item in cart_items:
+                # Get primary image
+                primary_image = cart_item.item.images.filter(is_primary=True, quality='low').first()
+                
+                # Create order item
+                order_item = OrderItem.objects.create(
+                    order=order,
+                    item=cart_item.item,
+                    size=cart_item.size,
+                    quantity=cart_item.quantity,
+                    price_at_time=cart_item.item.price,
+                    primary_image=primary_image.image_url if primary_image else None
+                )
+                
+                # Update stock
+                cart_item.size.quantity -= cart_item.quantity
+                cart_item.size.save()
+                
+                order_items.append({
+                    'id': order_item.id,
+                    'item_name': cart_item.item.name,
+                    'size': cart_item.size.size,
+                    'quantity': cart_item.quantity,
+                    'price': str(cart_item.item.price),
+                    'image_url': primary_image.image_url if primary_image else None
+                })
+            
+            # Clear the cart
+            cart_items.delete()
+            
+            return Response({
+                "message": "Order created successfully",
+                "order": {
+                    "id": order.id,
+                    "status": order.status,
+                    "total_price": str(order.total_price),
+                    "shipping_address": order.shipping_address,
+                    "shipping_phone": order.shipping_phone,
+                    "shipping_email": order.shipping_email,
+                    "first_name": order.first_name,
+                    "last_name": order.last_name,
+                    "zip_code": order.zip_code,
+                    "city": order.city,
+                    "created_at": order.created_at,
+                    "items": order_items
+                }
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
