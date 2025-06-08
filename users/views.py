@@ -577,6 +577,86 @@ class OrderView(APIView):
             # Clear the cart
             cart_items.delete()
             
+            # Send order confirmation email
+            try:
+                api_key = os.getenv('RESEND_API_KEY')
+                if api_key:
+                    resend.api_key = api_key
+                    
+                    # Format order items for email
+                    items_html = ""
+                    for item in order_items:
+                        items_html += f"""
+                            <tr>
+                                <td>{item['item_name']}</td>
+                                <td>{item['size']}</td>
+                                <td>{item['quantity']}</td>
+                                <td>${item['price']}</td>
+                            </tr>
+                        """
+                    
+                    params = {
+                        "from": "Peter's Shop <onboarding@resend.dev>",
+                        "to": [order.shipping_email],
+                        "subject": f"Thank You for Your Order #{order.id}",
+                        "html": f"""
+                            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                                <div style="text-align: center; margin-bottom: 30px;">
+                                    <h1 style="color: #2c3e50; margin-bottom: 10px;">Thank You for Your Order!</h1>
+                                    <p style="color: #7f8c8d; font-size: 16px;">We're excited to process your order #{order.id}</p>
+                                </div>
+
+                                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
+                                    <h2 style="color: #2c3e50; margin-bottom: 15px;">Next Steps: Complete Your Payment</h2>
+                                    <p style="font-size: 16px; margin-bottom: 15px;">To complete your order, please send payment via E-transfer to:</p>
+                                    <div style="background-color: #fff; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
+                                        <p style="font-size: 18px; font-weight: bold; color: #2c3e50; margin: 0;">lei232lei91@gmail.com</p>
+                                    </div>
+                                    <p style="color: #2c3e50; font-weight: bold; background-color: #e8f5e9; padding: 10px; border-radius: 4px;">
+                                        Please include Order ID #{order.id} in the transfer message
+                                    </p>
+                                </div>
+
+                                <div style="margin-bottom: 30px;">
+                                    <h3 style="color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;">Order Summary</h3>
+                                    <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+                                        <tr style="background-color: #f8f9fa;">
+                                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #ddd;">Item</th>
+                                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #ddd;">Size</th>
+                                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #ddd;">Qty</th>
+                                            <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ddd;">Price</th>
+                                        </tr>
+                                        {items_html}
+                                        <tr>
+                                            <td colspan="3" style="padding: 12px; text-align: right; font-weight: bold;">Total:</td>
+                                            <td style="padding: 12px; text-align: right; font-weight: bold;">${order.total_price}</td>
+                                        </tr>
+                                    </table>
+                                </div>
+
+                                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
+                                    <h3 style="color: #2c3e50; margin-bottom: 15px;">Shipping Information</h3>
+                                    <p style="margin: 5px 0;"><strong>Name:</strong> {order.first_name} {order.last_name}</p>
+                                    <p style="margin: 5px 0;"><strong>Address:</strong> {order.shipping_address}</p>
+                                    <p style="margin: 5px 0;"><strong>City:</strong> {order.city}</p>
+                                    <p style="margin: 5px 0;"><strong>ZIP Code:</strong> {order.zip_code}</p>
+                                    <p style="margin: 5px 0;"><strong>Phone:</strong> {order.shipping_phone}</p>
+                                </div>
+
+                                <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+                                    <p style="color: #7f8c8d; margin-bottom: 10px;">Questions about your order?</p>
+                                    <a href="mailto:lei23lei91@gmail.com" style="color: #3498db; text-decoration: none;">Contact us at lei23lei91@gmail.com</a>
+                                </div>
+                            </div>
+                        """
+                    }
+                    
+                    email = resend.Emails.send(params)
+                    logger.info(f"Order confirmation email sent to {order.shipping_email}")
+            except Exception as email_error:
+                logger.error(f"Error sending order confirmation email: {str(email_error)}")
+                # Continue with the response even if email fails
+            
             return Response({
                 "message": "Order created successfully",
                 "order": {
