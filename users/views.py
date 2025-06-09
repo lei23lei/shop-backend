@@ -680,3 +680,168 @@ class OrderView(APIView):
                 {"error": str(e)}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+class UserDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Get the authenticated user's details"""
+        try:
+            user = request.user
+            return Response({
+                "user": {
+                    "id": user.id,
+                    "email": user.email,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "phone_number": user.phone_number,
+                    "address": user.address,
+                    "is_superuser": user.is_superuser,
+                    "created_at": user.created_at,
+                    "updated_at": user.updated_at
+                }
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    def put(self, request):
+        """Update the authenticated user's details"""
+        try:
+            user = request.user
+            data = request.data
+            
+            # Fields that can be updated
+            updateable_fields = [
+                'first_name', 
+                'last_name', 
+                'phone_number', 
+                'address'
+            ]
+            
+            # Update only the fields that are provided in the request
+            for field in updateable_fields:
+                if field in data:
+                    setattr(user, field, data[field])
+            
+            # Save the updated user
+            user.save()
+            
+            return Response({
+                "message": "User information updated successfully",
+                "user": {
+                    "id": user.id,
+                    "email": user.email,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "phone_number": user.phone_number,
+                    "address": user.address,
+                    "is_superuser": user.is_superuser,
+                    "created_at": user.created_at,
+                    "updated_at": user.updated_at
+                }
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
+    
+    def post(self, request):
+        """Change the authenticated user's password"""
+        try:
+            data = request.data
+            
+            # Check required fields
+            if not data.get('current_password') or not data.get('new_password'):
+                return Response(
+                    {"error": "Current password and new password are required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            user = request.user
+            
+            # Verify current password
+            if not check_password(data.get('current_password'), user.password):
+                return Response(
+                    {"error": "Current password is incorrect"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Update password
+            user.password = make_password(data.get('new_password'))
+            user.save()
+            
+            return Response({
+                "message": "Password changed successfully"
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+class UserOrdersView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Get all orders for the authenticated user"""
+        try:
+            # Get all orders for the user with related items
+            orders = Order.objects.filter(user=request.user).prefetch_related(
+                'orderitem_set',
+                'orderitem_set__item',
+                'orderitem_set__size'
+            ).order_by('-created_at')
+            
+            orders_data = []
+            for order in orders:
+                # Get all items for this order
+                order_items = []
+                for order_item in order.orderitem_set.all():
+                    order_items.append({
+                        'id': order_item.id,
+                        'item_name': order_item.item.name,
+                        'size': order_item.size.size,
+                        'quantity': order_item.quantity,
+                        'price_at_time': str(order_item.price_at_time),
+                        'primary_image': order_item.primary_image
+                    })
+                
+                # Format order data
+                orders_data.append({
+                    'id': order.id,
+                    'status': order.status,
+                    'total_price': str(order.total_price),
+                    'shipping_address': order.shipping_address,
+                    'shipping_phone': order.shipping_phone,
+                    'shipping_name': order.shipping_name,
+                    'shipping_email': order.shipping_email,
+                    'first_name': order.first_name,
+                    'last_name': order.last_name,
+                    'zip_code': order.zip_code,
+                    'city': order.city,
+                    'created_at': order.created_at,
+                    'updated_at': order.updated_at,
+                    'items': order_items
+                })
+            
+            return Response({
+                'orders': orders_data,
+                'total_orders': len(orders_data)
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
