@@ -8,6 +8,8 @@ from django.db.models import Q, Prefetch
 from .models import Item, Category, ItemImage, ItemDetail, ItemSize, DetailImage
 from .serializers import ItemSerializer
 from django.db import transaction
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.permissions import IsAuthenticated
 
 # Create your views here.
 class CustomPagination(PageNumberPagination):
@@ -299,6 +301,256 @@ class ItemDetailView(APIView):
                     {'message': f'Item "{item_name}" has been successfully deleted'},
                     status=status.HTTP_200_OK
                 )
+                
+        except Item.DoesNotExist:
+            return Response(
+                {'error': 'Item not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class AdminItemView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
+    
+    def check_admin_permission(self, request):
+        """Check if the user is a superuser"""
+        if not request.user.is_superuser:
+            return Response(
+                {"error": "Only administrators can perform this action"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return None
+    
+    def get(self, request, item_id=None):
+        """Get item details for admin (with all image qualities)"""
+        # Check admin permission
+        permission_check = self.check_admin_permission(request)
+        if permission_check:
+            return permission_check
+            
+        try:
+            if item_id:
+                # Get specific item
+                item = Item.objects.prefetch_related(
+                    'details',
+                    'sizes',
+                    'images',
+                    'detail_images',
+                    'categories'
+                ).get(id=item_id)
+                
+                # Format single item response
+                data = {
+                    'id': item.id,
+                    'name': item.name,
+                    'price': str(item.price),
+                    'description': item.description,
+                    'created_at': item.created_at,
+                    'updated_at': item.updated_at,
+                    'categories': [
+                        {'id': cat.id, 'name': cat.name}
+                        for cat in item.categories.all()
+                    ],
+                    'details': {
+                        'color': item.details.color,
+                        'detail': item.details.detail
+                    } if hasattr(item, 'details') else None,
+                    'sizes': [
+                        {
+                            'id': size.id,
+                            'size': size.size,
+                            'quantity': size.quantity
+                        }
+                        for size in item.sizes.all()
+                    ],
+                    'images': [
+                        {
+                            'id': img.id,
+                            'image_url': img.image_url,
+                            'quality': img.quality,
+                            'is_primary': img.is_primary
+                        }
+                        for img in item.images.all()
+                    ],
+                    'detail_images': [
+                        {
+                            'id': img.id,
+                            'image_url': img.image_url,
+                            'display_order': img.display_order
+                        }
+                        for img in item.detail_images.all()
+                    ]
+                }
+                return Response(data)
+            else:
+                # Get all items with pagination
+                items = Item.objects.prefetch_related(
+                    'details',
+                    'sizes',
+                    'images',
+                    'detail_images',
+                    'categories'
+                ).all()
+                
+                paginator = CustomPagination()
+                paginated_items = paginator.paginate_queryset(items, request)
+                
+                items_data = []
+                for item in paginated_items:
+                    items_data.append({
+                        'id': item.id,
+                        'name': item.name,
+                        'price': str(item.price),
+                        'description': item.description,
+                        'created_at': item.created_at,
+                        'updated_at': item.updated_at,
+                        'categories': [
+                            {'id': cat.id, 'name': cat.name}
+                            for cat in item.categories.all()
+                        ],
+                        'details': {
+                            'color': item.details.color,
+                            'detail': item.details.detail
+                        } if hasattr(item, 'details') else None,
+                        'sizes': [
+                            {
+                                'id': size.id,
+                                'size': size.size,
+                                'quantity': size.quantity
+                            }
+                            for size in item.sizes.all()
+                        ],
+                        'total_images': item.images.count(),
+                        'total_detail_images': item.detail_images.count()
+                    })
+                
+                return paginator.get_paginated_response({
+                    'items': items_data,
+                    'total_items': items.count()
+                })
+                
+        except Item.DoesNotExist:
+            return Response(
+                {'error': 'Item not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def put(self, request, item_id):
+        """Update an item's details"""
+        # Check admin permission
+        permission_check = self.check_admin_permission(request)
+        if permission_check:
+            return permission_check
+            
+        try:
+            with transaction.atomic():
+                # Get the item
+                item = Item.objects.get(id=item_id)
+                data = request.data
+                
+                # Update basic item info
+                if 'name' in data:
+                    item.name = data['name']
+                if 'price' in data:
+                    item.price = data['price']
+                if 'description' in data:
+                    item.description = data['description']
+                item.save()
+                
+                # Update details
+                if 'color' in data or 'detail' in data:
+                    details, _ = ItemDetail.objects.get_or_create(item=item)
+                    if 'color' in data:
+                        details.color = data['color']
+                    if 'detail' in data:
+                        details.detail = data['detail']
+                    details.save()
+                
+                # Update sizes
+                if 'sizes' in data:
+                    # Delete existing sizes
+                    item.sizes.all().delete()
+                    # Create new sizes
+                    for size_data in data['sizes']:
+                        ItemSize.objects.create(
+                            item=item,
+                            size=size_data['size'],
+                            quantity=size_data['quantity']
+                        )
+                
+                # Update categories
+                if 'categories' in data:
+                    item.categories.clear()
+                    item.categories.add(*data['categories'])
+                
+                # Update images
+                if 'images' in data:
+                    # Delete existing images
+                    item.images.all().delete()
+                    # Create new images
+                    for image_data in data['images']:
+                        ItemImage.objects.create(
+                            item=item,
+                            image_url=image_data['image_url'],
+                            quality=image_data.get('quality', 'medium'),
+                            is_primary=image_data.get('is_primary', False)
+                        )
+                
+                # Update detail images
+                if 'detail_images' in data:
+                    # Delete existing detail images
+                    item.detail_images.all().delete()
+                    # Create new detail images
+                    for idx, image_data in enumerate(data['detail_images']):
+                        DetailImage.objects.create(
+                            item=item,
+                            image_url=image_data['image_url'],
+                            display_order=image_data.get('display_order', idx)
+                        )
+                
+                return Response({
+                    'message': 'Item updated successfully',
+                    'item_id': item.id
+                }, status=status.HTTP_200_OK)
+                
+        except Item.DoesNotExist:
+            return Response(
+                {'error': 'Item not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def delete(self, request, item_id):
+        """Delete an item and all its related data"""
+        # Check admin permission
+        permission_check = self.check_admin_permission(request)
+        if permission_check:
+            return permission_check
+            
+        try:
+            with transaction.atomic():
+                item = Item.objects.get(id=item_id)
+                item_name = item.name
+                item.delete()
+                
+                return Response({
+                    'message': f'Item "{item_name}" has been successfully deleted'
+                }, status=status.HTTP_200_OK)
                 
         except Item.DoesNotExist:
             return Response(
