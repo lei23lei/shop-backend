@@ -9,7 +9,7 @@ from .models import Item, Category, ItemImage, ItemDetail, ItemSize, DetailImage
 from .serializers import ItemSerializer
 from django.db import transaction
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 
 # Create your views here.
 class CustomPagination(PageNumberPagination):
@@ -18,6 +18,7 @@ class CustomPagination(PageNumberPagination):
     max_page_size = 100
 
 class ItemView(APIView):
+    permission_classes = [AllowAny]  # Allow public access to browse items
     pagination_class = CustomPagination
 
     def get_all_subcategories(self, category_ids):
@@ -202,6 +203,8 @@ class ItemView(APIView):
             )
 
 class ItemDetailView(APIView):
+    permission_classes = [AllowAny]  # Allow public access to view item details
+
     def get(self, request, item_id):
         try:
             # Get item with all related data in a single query
