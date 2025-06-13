@@ -192,7 +192,7 @@ class ForgotPasswordView(APIView):
             
             try:
                 params = {
-                    "from": "Peter's Shop <onboarding@resend.dev>",
+                    "from": "Peter's Shop <no-reply@petershop.shop>",
                     "to": [email],
                     "subject": "Reset Your Password",
                     "html": f"""
@@ -596,7 +596,7 @@ class OrderView(APIView):
                         """
                     
                     params = {
-                        "from": "Peter's Shop <onboarding@resend.dev>",
+                        "from": "Peter's Shop <no-reply@petershop.shop>",
                         "to": [order.shipping_email],
                         "subject": f"Thank You for Your Order #{order.id}",
                         "html": f"""
