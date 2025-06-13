@@ -105,6 +105,13 @@ class ItemView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
     def post(self, request):
+        # Check if user is authenticated for creating items
+        if not request.user.is_authenticated:
+            return Response(
+                {'error': 'Authentication required to create items'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+            
         try:
             # Start a transaction to ensure all related data is created or none
             with transaction.atomic():
