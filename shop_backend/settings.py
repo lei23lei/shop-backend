@@ -135,6 +135,7 @@ if not DEBUG:
         r"^https://.*\.petershop\.shop$",  # Allow all subdomains in production
     ]
 
+# More comprehensive CORS settings
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
@@ -145,6 +146,8 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+    'cache-control',
+    'pragma',
 ]
 
 CORS_ALLOW_METHODS = [
@@ -154,6 +157,17 @@ CORS_ALLOW_METHODS = [
     'PATCH',
     'POST',
     'PUT',
+]
+
+# Additional CORS settings to handle preflight requests
+CORS_PREFLIGHT_MAX_AGE = 86400
+CORS_ALLOW_PRIVATE_NETWORK = True
+
+# Ensure CORS headers are properly handled
+CORS_REPLACE_HTTPS_REFERER = True
+CORS_EXPOSE_HEADERS = [
+    'Content-Length',
+    'Content-Type',
 ]
 
 # Security settings - different for development and production
