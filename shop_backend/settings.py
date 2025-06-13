@@ -25,7 +25,7 @@ SECRET_KEY = "django-insecure-!ppa#g5enryv)ph321xgbz_ugaqkpl0#t9vw+z)+hjt8!9g_$f
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['34.59.35.32', 'localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['34.59.35.32', 'localhost', '127.0.0.1', 'api.petershop.shop']
 
 
 # Application definition
