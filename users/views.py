@@ -600,54 +600,350 @@ class OrderView(APIView):
                         "to": [order.shipping_email],
                         "subject": f"Thank You for Your Order #{order.id}",
                         "html": f"""
-                            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                                <div style="text-align: center; margin-bottom: 30px;">
-                                    <h1 style="color: #2c3e50; margin-bottom: 10px;">Thank You for Your Order!</h1>
-                                    <p style="color: #7f8c8d; font-size: 16px;">We're excited to process your order #{order.id}</p>
-                                </div>
-
-                                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
-                                    <h2 style="color: #2c3e50; margin-bottom: 15px;">Next Steps: Complete Your Payment</h2>
-                                    <p style="font-size: 16px; margin-bottom: 15px;">To complete your order, please send payment via E-transfer to:</p>
-                                    <div style="background-color: #fff; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
-                                        <p style="font-size: 18px; font-weight: bold; color: #2c3e50; margin: 0;">lei232lei91@gmail.com</p>
+                            <!DOCTYPE html>
+                            <html lang="en">
+                            <head>
+                                <meta charset="UTF-8">
+                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                <title>Order Confirmation</title>
+                                <style>
+                                    /* Reset styles */
+                                    * {{
+                                        margin: 0;
+                                        padding: 0;
+                                        box-sizing: border-box;
+                                    }}
+                                    
+                                    body {{
+                                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+                                        line-height: 1.6;
+                                        color: #333;
+                                        background-color: #f5f5f5;
+                                        margin: 0;
+                                        padding: 0;
+                                    }}
+                                    
+                                    .email-container {{
+                                        max-width: 600px;
+                                        margin: 0 auto;
+                                        background-color: #ffffff;
+                                        padding: 20px;
+                                    }}
+                                    
+                                    .header {{
+                                        text-align: center;
+                                        margin-bottom: 30px;
+                                        padding: 20px 0;
+                                    }}
+                                    
+                                    .header h1 {{
+                                        color: #2c3e50;
+                                        margin-bottom: 10px;
+                                        font-size: 28px;
+                                        font-weight: 700;
+                                    }}
+                                    
+                                    .header p {{
+                                        color: #7f8c8d;
+                                        font-size: 16px;
+                                        margin: 0;
+                                    }}
+                                    
+                                    .payment-section {{
+                                        background-color: #f8f9fa;
+                                        padding: 20px;
+                                        border-radius: 8px;
+                                        margin-bottom: 30px;
+                                        border-left: 4px solid #3498db;
+                                    }}
+                                    
+                                    .payment-section h2 {{
+                                        color: #2c3e50;
+                                        margin-bottom: 15px;
+                                        font-size: 20px;
+                                    }}
+                                    
+                                    .payment-section p {{
+                                        font-size: 16px;
+                                        margin-bottom: 15px;
+                                        line-height: 1.5;
+                                    }}
+                                    
+                                    .email-highlight {{
+                                        background-color: #fff;
+                                        padding: 15px;
+                                        border-radius: 6px;
+                                        margin: 15px 0;
+                                        text-align: center;
+                                        border: 2px solid #3498db;
+                                    }}
+                                    
+                                    .email-highlight p {{
+                                        font-size: 18px;
+                                        font-weight: bold;
+                                        color: #2c3e50;
+                                        margin: 0;
+                                    }}
+                                    
+                                    .order-id-note {{
+                                        color: #2c3e50;
+                                        font-weight: bold;
+                                        background-color: #e8f5e9;
+                                        padding: 12px;
+                                        border-radius: 4px;
+                                        text-align: center;
+                                        margin-top: 15px;
+                                    }}
+                                    
+                                    .order-summary {{
+                                        margin-bottom: 30px;
+                                    }}
+                                    
+                                    .order-summary h3 {{
+                                        color: #2c3e50;
+                                        border-bottom: 2px solid #eee;
+                                        padding-bottom: 10px;
+                                        margin-bottom: 20px;
+                                        font-size: 18px;
+                                    }}
+                                    
+                                    .order-table {{
+                                        width: 100%;
+                                        border-collapse: collapse;
+                                        margin-top: 15px;
+                                        background-color: #fff;
+                                        border-radius: 8px;
+                                        overflow: hidden;
+                                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                                    }}
+                                    
+                                    .order-table th {{
+                                        background-color: #f8f9fa;
+                                        padding: 12px 8px;
+                                        text-align: left;
+                                        border-bottom: 2px solid #ddd;
+                                        font-weight: 600;
+                                        font-size: 14px;
+                                    }}
+                                    
+                                    .order-table td {{
+                                        padding: 12px 8px;
+                                        border-bottom: 1px solid #eee;
+                                        font-size: 14px;
+                                    }}
+                                    
+                                    .order-table .text-center {{
+                                        text-align: center;
+                                    }}
+                                    
+                                    .order-table .text-right {{
+                                        text-align: right;
+                                    }}
+                                    
+                                    .order-table .total-row {{
+                                        background-color: #f8f9fa;
+                                        font-weight: bold;
+                                    }}
+                                    
+                                    .shipping-info {{
+                                        background-color: #f8f9fa;
+                                        padding: 20px;
+                                        border-radius: 8px;
+                                        margin-bottom: 30px;
+                                    }}
+                                    
+                                    .shipping-info h3 {{
+                                        color: #2c3e50;
+                                        margin-bottom: 15px;
+                                        font-size: 18px;
+                                    }}
+                                    
+                                    .shipping-info p {{
+                                        margin: 8px 0;
+                                        font-size: 14px;
+                                        line-height: 1.4;
+                                    }}
+                                    
+                                    .footer {{
+                                        text-align: center;
+                                        margin-top: 30px;
+                                        padding-top: 20px;
+                                        border-top: 1px solid #eee;
+                                    }}
+                                    
+                                    .footer p {{
+                                        color: #7f8c8d;
+                                        margin-bottom: 10px;
+                                        font-size: 14px;
+                                    }}
+                                    
+                                    .footer a {{
+                                        color: #3498db;
+                                        text-decoration: none;
+                                        font-weight: 500;
+                                    }}
+                                    
+                                    /* Mobile Responsive Styles */
+                                    @media only screen and (max-width: 600px) {{
+                                        .email-container {{
+                                            padding: 15px;
+                                            margin: 0;
+                                        }}
+                                        
+                                        .header h1 {{
+                                            font-size: 24px;
+                                        }}
+                                        
+                                        .header p {{
+                                            font-size: 14px;
+                                        }}
+                                        
+                                        .payment-section {{
+                                            padding: 15px;
+                                            margin-bottom: 20px;
+                                        }}
+                                        
+                                        .payment-section h2 {{
+                                            font-size: 18px;
+                                        }}
+                                        
+                                        .payment-section p {{
+                                            font-size: 14px;
+                                        }}
+                                        
+                                        .email-highlight {{
+                                            padding: 12px;
+                                        }}
+                                        
+                                        .email-highlight p {{
+                                            font-size: 16px;
+                                        }}
+                                        
+                                        .order-id-note {{
+                                            padding: 10px;
+                                            font-size: 14px;
+                                        }}
+                                        
+                                        .order-table {{
+                                            font-size: 12px;
+                                        }}
+                                        
+                                        .order-table th,
+                                        .order-table td {{
+                                            padding: 8px 4px;
+                                            font-size: 12px;
+                                        }}
+                                        
+                                        .order-table th:first-child,
+                                        .order-table td:first-child {{
+                                            padding-left: 8px;
+                                        }}
+                                        
+                                        .order-table th:last-child,
+                                        .order-table td:last-child {{
+                                            padding-right: 8px;
+                                        }}
+                                        
+                                        .shipping-info {{
+                                            padding: 15px;
+                                        }}
+                                        
+                                        .shipping-info h3 {{
+                                            font-size: 16px;
+                                        }}
+                                        
+                                        .shipping-info p {{
+                                            font-size: 13px;
+                                        }}
+                                        
+                                        .footer p {{
+                                            font-size: 13px;
+                                        }}
+                                    }}
+                                    
+                                    @media only screen and (max-width: 480px) {{
+                                        .email-container {{
+                                            padding: 10px;
+                                        }}
+                                        
+                                        .header {{
+                                            padding: 15px 0;
+                                            margin-bottom: 20px;
+                                        }}
+                                        
+                                        .header h1 {{
+                                            font-size: 22px;
+                                        }}
+                                        
+                                        .payment-section,
+                                        .shipping-info {{
+                                            padding: 12px;
+                                        }}
+                                        
+                                        .order-table th,
+                                        .order-table td {{
+                                            padding: 6px 3px;
+                                            font-size: 11px;
+                                        }}
+                                        
+                                        .order-summary h3,
+                                        .shipping-info h3 {{
+                                            font-size: 15px;
+                                        }}
+                                    }}
+                                </style>
+                            </head>
+                            <body>
+                                <div class="email-container">
+                                    <div class="header">
+                                        <h1>Thank You for Your Order!</h1>
+                                        <p>We're excited to process your order #{order.id}</p>
                                     </div>
-                                    <p style="color: #2c3e50; font-weight: bold; background-color: #e8f5e9; padding: 10px; border-radius: 4px;">
-                                        Please include Order ID #{order.id} in the transfer message
-                                    </p>
-                                </div>
 
-                                <div style="margin-bottom: 30px;">
-                                    <h3 style="color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;">Order Summary</h3>
-                                    <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
-                                        <tr style="background-color: #f8f9fa;">
-                                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #ddd;">Item</th>
-                                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #ddd;">Size</th>
-                                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #ddd;">Qty</th>
-                                            <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ddd;">Price</th>
-                                        </tr>
-                                        {items_html}
-                                        <tr>
-                                            <td colspan="3" style="padding: 12px; text-align: right; font-weight: bold;">Total:</td>
-                                            <td style="padding: 12px; text-align: right; font-weight: bold;">${order.total_price}</td>
-                                        </tr>
-                                    </table>
-                                </div>
+                                    <div class="payment-section">
+                                        <h2>Next Steps: Complete Your Payment</h2>
+                                        <p>To complete your order, please send payment via E-transfer to:</p>
+                                        <div class="email-highlight">
+                                            <p>lei232lei91@gmail.com</p>
+                                        </div>
+                                        <div class="order-id-note">
+                                            Please include Order ID #{order.id} in the transfer message
+                                        </div>
+                                    </div>
 
-                                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
-                                    <h3 style="color: #2c3e50; margin-bottom: 15px;">Shipping Information</h3>
-                                    <p style="margin: 5px 0;"><strong>Name:</strong> {order.first_name} {order.last_name}</p>
-                                    <p style="margin: 5px 0;"><strong>Address:</strong> {order.shipping_address}</p>
-                                    <p style="margin: 5px 0;"><strong>City:</strong> {order.city}</p>
-                                    <p style="margin: 5px 0;"><strong>ZIP Code:</strong> {order.zip_code}</p>
-                                    <p style="margin: 5px 0;"><strong>Phone:</strong> {order.shipping_phone}</p>
-                                </div>
+                                    <div class="order-summary">
+                                        <h3>Order Summary</h3>
+                                        <table class="order-table">
+                                            <tr>
+                                                <th>Item</th>
+                                                <th>Size</th>
+                                                <th class="text-center">Qty</th>
+                                                <th class="text-right">Price</th>
+                                            </tr>
+                                            {items_html}
+                                            <tr class="total-row">
+                                                <td colspan="3" class="text-right">Total:</td>
+                                                <td class="text-right">${order.total_price}</td>
+                                            </tr>
+                                        </table>
+                                    </div>
 
-                                <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
-                                    <p style="color: #7f8c8d; margin-bottom: 10px;">Questions about your order?</p>
-                                    <a href="mailto:lei23lei91@gmail.com" style="color: #3498db; text-decoration: none;">Contact us at lei23lei91@gmail.com</a>
+                                    <div class="shipping-info">
+                                        <h3>Shipping Information</h3>
+                                        <p><strong>Name:</strong> {order.first_name} {order.last_name}</p>
+                                        <p><strong>Address:</strong> {order.shipping_address}</p>
+                                        <p><strong>City:</strong> {order.city}</p>
+                                        <p><strong>ZIP Code:</strong> {order.zip_code}</p>
+                                        <p><strong>Phone:</strong> {order.shipping_phone}</p>
+                                    </div>
+
+                                    <div class="footer">
+                                        <p>Questions about your order?</p>
+                                        <a href="mailto:lei23lei91@gmail.com">Contact us at lei23lei91@gmail.com</a>
+                                    </div>
                                 </div>
-                            </div>
+                            </body>
+                            </html>
                         """
                     }
                     

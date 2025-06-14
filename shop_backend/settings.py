@@ -164,7 +164,6 @@ CORS_PREFLIGHT_MAX_AGE = 86400
 CORS_ALLOW_PRIVATE_NETWORK = True
 
 # Ensure CORS headers are properly handled
-CORS_REPLACE_HTTPS_REFERER = True
 CORS_EXPOSE_HEADERS = [
     'Content-Length',
     'Content-Type',
