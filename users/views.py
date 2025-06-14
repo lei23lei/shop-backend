@@ -21,6 +21,7 @@ class UserView(APIView):
         return Response({"message": "Hello, World!"}, status=status.HTTP_200_OK)
 
 class RegisterView(APIView):
+    permission_classes = []  # Allow public access for registration
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     
     def post(self, request):
@@ -63,14 +64,17 @@ class RegisterView(APIView):
             )
 
 class LoginView(APIView):
+    permission_classes = []  # Allow public access for login
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     
     def post(self, request):
         try:
             data = request.data
+            logger.info(f"Login attempt with data: {data}")
             
             # Check required fields
             if not data.get('email') or not data.get('password'):
+                logger.warning(f"Missing email or password in login request")
                 return Response(
                     {"error": "Email and password are required"}, 
                     status=status.HTTP_400_BAD_REQUEST
@@ -79,7 +83,9 @@ class LoginView(APIView):
             # Find user by email
             try:
                 user = User.objects.get(email=data.get('email'))
+                logger.info(f"User found: {user.email}")
             except User.DoesNotExist:
+                logger.warning(f"User not found for email: {data.get('email')}")
                 return Response(
                     {"error": "Invalid email or password"}, 
                     status=status.HTTP_401_UNAUTHORIZED
@@ -87,6 +93,7 @@ class LoginView(APIView):
             
             # Check password
             if not check_password(data.get('password'), user.password):
+                logger.warning(f"Invalid password for user: {user.email}")
                 return Response(
                     {"error": "Invalid email or password"}, 
                     status=status.HTTP_401_UNAUTHORIZED
@@ -94,6 +101,7 @@ class LoginView(APIView):
             
             # Generate tokens
             refresh = RefreshToken.for_user(user)
+            logger.info(f"Login successful for user: {user.email}")
             
             return Response({
                 "message": "Login successful",
@@ -113,6 +121,7 @@ class LoginView(APIView):
             }, status=status.HTTP_200_OK)
             
         except Exception as e:
+            logger.error(f"Login error: {str(e)}")
             return Response(
                 {"error": str(e)}, 
                 status=status.HTTP_400_BAD_REQUEST
