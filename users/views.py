@@ -151,6 +151,7 @@ class VerifyTokenView(APIView):
             )
 
 class ForgotPasswordView(APIView):
+    permission_classes = []  # Allow public access for password reset
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     
     def post(self, request):
@@ -233,6 +234,7 @@ class ForgotPasswordView(APIView):
             )
 
 class ResetPasswordView(APIView):
+    permission_classes = []  # Allow public access for password reset
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     
     def post(self, request):
@@ -1144,6 +1146,405 @@ class UserOrdersView(APIView):
                 'orders': orders_data,
                 'total_orders': len(orders_data)
             }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+class GuestCheckoutView(APIView):
+    permission_classes = []  # Allow public access for guest checkout
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
+    
+    def post(self, request):
+        """Create a new order from guest cart data sent from frontend"""
+        try:
+            # Get cart data from request - expecting LocalCart structure
+            cart_data = request.data.get('cart', {})
+            cart_items = cart_data.get('items', [])
+            
+            if not cart_items:
+                return Response(
+                    {"error": "Cart is empty"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate required shipping information
+            required_fields = [
+                'shipping_address', 'shipping_phone', 'shipping_email',
+                'first_name', 'last_name', 'zip_code', 'city'
+            ]
+            
+            missing_fields = [field for field in required_fields if not request.data.get(field)]
+            if missing_fields:
+                return Response(
+                    {"error": f"Missing required fields: {', '.join(missing_fields)}"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate cart items and calculate total
+            cart_items_data = []
+            total_price = Decimal('0.00')
+            
+            for cart_item in cart_items:
+                try:
+                    # Use 'id' instead of 'item_id' to match your LocalCartItem interface
+                    item = Item.objects.get(id=cart_item['id'])
+                    size = ItemSize.objects.get(id=cart_item['size_id'])
+                    
+                    # Validate stock availability
+                    if cart_item['quantity'] > size.quantity:
+                        return Response(
+                            {"error": f"Only {size.quantity} items available for {item.name} in size {size.size}"}, 
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    
+                    # Calculate item total
+                    item_total = item.price * cart_item['quantity']
+                    total_price += item_total
+                    
+                    cart_items_data.append({
+                        'item': item,
+                        'size': size,
+                        'quantity': cart_item['quantity'],
+                        'price': item.price
+                    })
+                    
+                except (Item.DoesNotExist, ItemSize.DoesNotExist):
+                    return Response(
+                        {"error": "One or more items in cart are no longer available"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # Create order
+            order = Order.objects.create(
+                user=None,  # Guest order
+                status='Pending',
+                total_price=total_price,
+                shipping_address=request.data.get('shipping_address'),
+                shipping_phone=request.data.get('shipping_phone'),
+                shipping_email=request.data.get('shipping_email'),
+                first_name=request.data.get('first_name'),
+                last_name=request.data.get('last_name'),
+                zip_code=request.data.get('zip_code'),
+                city=request.data.get('city'),
+                guest_email=request.data.get('shipping_email')  # Store guest email
+            )
+            
+            # Create order items and update stock
+            order_items = []
+            for cart_item_data in cart_items_data:
+                # Get primary image
+                primary_image = cart_item_data['item'].images.filter(is_primary=True, quality='low').first()
+                
+                # Create order item
+                order_item = OrderItem.objects.create(
+                    order=order,
+                    item=cart_item_data['item'],
+                    size=cart_item_data['size'],
+                    quantity=cart_item_data['quantity'],
+                    price_at_time=cart_item_data['price'],
+                    primary_image=primary_image.image_url if primary_image else None
+                )
+                
+                # Update stock
+                cart_item_data['size'].quantity -= cart_item_data['quantity']
+                cart_item_data['size'].save()
+                
+                order_items.append({
+                    'id': order_item.id,
+                    'item_name': cart_item_data['item'].name,
+                    'size': cart_item_data['size'].size,
+                    'quantity': cart_item_data['quantity'],
+                    'price': str(cart_item_data['price']),
+                    'image_url': primary_image.image_url if primary_image else None
+                })
+            
+            # Send order confirmation email
+            try:
+                api_key = os.getenv('RESEND_API_KEY')
+                if api_key:
+                    resend.api_key = api_key
+                    
+                    # Format order items for email
+                    items_html = ""
+                    for item in order_items:
+                        items_html += f"""
+                            <tr>
+                                <td>{item['item_name']}</td>
+                                <td>{item['size']}</td>
+                                <td>{item['quantity']}</td>
+                                <td>${item['price']}</td>
+                            </tr>
+                        """
+                    
+                    params = {
+                        "from": "Peter's Shop <no-reply@petershop.shop>",
+                        "to": [order.shipping_email],
+                        "subject": f"Thank You for Your Order #{order.id}",
+                        "html": f"""
+                            <!DOCTYPE html>
+                            <html lang="en">
+                            <head>
+                                <meta charset="UTF-8">
+                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                <title>Order Confirmation</title>
+                                <style>
+                                    /* Reset styles */
+                                    * {{
+                                        margin: 0;
+                                        padding: 0;
+                                        box-sizing: border-box;
+                                    }}
+                                    
+                                    body {{
+                                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+                                        line-height: 1.6;
+                                        color: #333;
+                                        background-color: #f5f5f5;
+                                        margin: 0;
+                                        padding: 0;
+                                    }}
+                                    
+                                    .email-container {{
+                                        max-width: 600px;
+                                        margin: 0 auto;
+                                        background-color: #ffffff;
+                                        padding: 20px;
+                                    }}
+                                    
+                                    .header {{
+                                        text-align: center;
+                                        margin-bottom: 30px;
+                                        padding: 20px 0;
+                                    }}
+                                    
+                                    .header h1 {{
+                                        color: #2c3e50;
+                                        margin-bottom: 10px;
+                                        font-size: 28px;
+                                        font-weight: 700;
+                                    }}
+                                    
+                                    .header p {{
+                                        color: #7f8c8d;
+                                        font-size: 16px;
+                                        margin: 0;
+                                    }}
+                                    
+                                    .payment-section {{
+                                        background-color: #f8f9fa;
+                                        padding: 20px;
+                                        border-radius: 8px;
+                                        margin-bottom: 30px;
+                                        border-left: 4px solid #3498db;
+                                    }}
+                                    
+                                    .payment-section h2 {{
+                                        color: #2c3e50;
+                                        margin-bottom: 15px;
+                                        font-size: 20px;
+                                    }}
+                                    
+                                    .payment-section p {{
+                                        font-size: 16px;
+                                        margin-bottom: 15px;
+                                        line-height: 1.5;
+                                    }}
+                                    
+                                    .email-highlight {{
+                                        background-color: #fff;
+                                        padding: 15px;
+                                        border-radius: 6px;
+                                        margin: 15px 0;
+                                        text-align: center;
+                                        border: 2px solid #3498db;
+                                    }}
+                                    
+                                    .email-highlight p {{
+                                        font-size: 18px;
+                                        font-weight: bold;
+                                        color: #2c3e50;
+                                        margin: 0;
+                                    }}
+                                    
+                                    .order-id-note {{
+                                        color: #2c3e50;
+                                        font-weight: bold;
+                                        background-color: #e8f5e9;
+                                        padding: 12px;
+                                        border-radius: 4px;
+                                        text-align: center;
+                                        margin-top: 15px;
+                                    }}
+                                    
+                                    .order-summary {{
+                                        margin-bottom: 30px;
+                                    }}
+                                    
+                                    .order-summary h3 {{
+                                        color: #2c3e50;
+                                        border-bottom: 2px solid #eee;
+                                        padding-bottom: 10px;
+                                        margin-bottom: 20px;
+                                        font-size: 18px;
+                                    }}
+                                    
+                                    .order-table {{
+                                        width: 100%;
+                                        border-collapse: collapse;
+                                        margin-top: 15px;
+                                        background-color: #fff;
+                                        border-radius: 8px;
+                                        overflow: hidden;
+                                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                                    }}
+                                    
+                                    .order-table th {{
+                                        background-color: #f8f9fa;
+                                        padding: 12px 8px;
+                                        text-align: left;
+                                        border-bottom: 2px solid #ddd;
+                                        font-weight: 600;
+                                        font-size: 14px;
+                                    }}
+                                    
+                                    .order-table td {{
+                                        padding: 12px 8px;
+                                        border-bottom: 1px solid #eee;
+                                        font-size: 14px;
+                                    }}
+                                    
+                                    .order-table .text-center {{
+                                        text-align: center;
+                                    }}
+                                    
+                                    .order-table .text-right {{
+                                        text-align: right;
+                                    }}
+                                    
+                                    .order-table .total-row {{
+                                        background-color: #f8f9fa;
+                                        font-weight: bold;
+                                    }}
+                                    
+                                    .shipping-info {{
+                                        background-color: #f8f9fa;
+                                        padding: 20px;
+                                        border-radius: 8px;
+                                        margin-bottom: 30px;
+                                    }}
+                                    
+                                    .shipping-info h3 {{
+                                        color: #2c3e50;
+                                        margin-bottom: 15px;
+                                        font-size: 18px;
+                                    }}
+                                    
+                                    .shipping-info p {{
+                                        margin: 8px 0;
+                                        font-size: 14px;
+                                        line-height: 1.4;
+                                    }}
+                                    
+                                    .footer {{
+                                        text-align: center;
+                                        margin-top: 30px;
+                                        padding-top: 20px;
+                                        border-top: 1px solid #eee;
+                                    }}
+                                    
+                                    .footer p {{
+                                        color: #7f8c8d;
+                                        margin-bottom: 10px;
+                                        font-size: 14px;
+                                    }}
+                                    
+                                    .footer a {{
+                                        color: #3498db;
+                                        text-decoration: none;
+                                        font-weight: 500;
+                                    }}
+                                </style>
+                            </head>
+                            <body>
+                                <div class="email-container">
+                                    <div class="header">
+                                        <h1>Thank You for Your Order!</h1>
+                                        <p>We're excited to process your order #{order.id}</p>
+                                    </div>
+
+                                    <div class="payment-section">
+                                        <h2>Next Steps: Complete Your Payment</h2>
+                                        <p>To complete your order, please send payment via E-transfer to:</p>
+                                        <div class="email-highlight">
+                                            <p>lei232lei91@gmail.com</p>
+                                        </div>
+                                        <div class="order-id-note">
+                                            Please include Order ID #{order.id} in the transfer message
+                                        </div>
+                                    </div>
+
+                                    <div class="order-summary">
+                                        <h3>Order Summary</h3>
+                                        <table class="order-table">
+                                            <tr>
+                                                <th>Item</th>
+                                                <th>Size</th>
+                                                <th class="text-center">Qty</th>
+                                                <th class="text-right">Price</th>
+                                            </tr>
+                                            {items_html}
+                                            <tr class="total-row">
+                                                <td colspan="3" class="text-right">Total:</td>
+                                                <td class="text-right">${order.total_price}</td>
+                                            </tr>
+                                        </table>
+                                    </div>
+
+                                    <div class="shipping-info">
+                                        <h3>Shipping Information</h3>
+                                        <p><strong>Name:</strong> {order.first_name} {order.last_name}</p>
+                                        <p><strong>Address:</strong> {order.shipping_address}</p>
+                                        <p><strong>City:</strong> {order.city}</p>
+                                        <p><strong>ZIP Code:</strong> {order.zip_code}</p>
+                                        <p><strong>Phone:</strong> {order.shipping_phone}</p>
+                                    </div>
+
+                                    <div class="footer">
+                                        <p>Questions about your order?</p>
+                                        <a href="mailto:lei23lei91@gmail.com">Contact us at lei23lei91@gmail.com</a>
+                                    </div>
+                                </div>
+                            </body>
+                            </html>
+                        """
+                    }
+                    
+                    email = resend.Emails.send(params)
+                    logger.info(f"Guest order confirmation email sent to {order.shipping_email}")
+            except Exception as email_error:
+                logger.error(f"Error sending guest order confirmation email: {str(email_error)}")
+                # Continue with the response even if email fails
+            
+            return Response({
+                "message": "Order created successfully",
+                "order": {
+                    "id": order.id,
+                    "status": order.status,
+                    "total_price": str(order.total_price),
+                    "shipping_address": order.shipping_address,
+                    "shipping_phone": order.shipping_phone,
+                    "shipping_email": order.shipping_email,
+                    "first_name": order.first_name,
+                    "last_name": order.last_name,
+                    "zip_code": order.zip_code,
+                    "city": order.city,
+                    "created_at": order.created_at,
+                    "items": order_items
+                }
+            }, status=status.HTTP_201_CREATED)
             
         except Exception as e:
             return Response(
