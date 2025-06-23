@@ -99,11 +99,23 @@ class LoginView(APIView):
                     status=status.HTTP_401_UNAUTHORIZED
                 )
             
+            # Handle cart merging if guest cart is provided
+            guest_cart = data.get('guest_cart')
+            merged_cart_info = None
+            
+            if guest_cart and guest_cart.get('items'):
+                try:
+                    merged_cart_info = self.merge_guest_cart_with_user_cart(user, guest_cart)
+                    logger.info(f"Cart merged successfully for user: {user.email}")
+                except Exception as cart_error:
+                    logger.error(f"Error merging cart for user {user.email}: {str(cart_error)}")
+                    # Don't fail login if cart merge fails, just log the error
+            
             # Generate tokens
             refresh = RefreshToken.for_user(user)
             logger.info(f"Login successful for user: {user.email}")
             
-            return Response({
+            response_data = {
                 "message": "Login successful",
                 "user": {
                     "id": user.id,
@@ -118,7 +130,13 @@ class LoginView(APIView):
                     "access": str(refresh.access_token),
                     "refresh": str(refresh)
                 }
-            }, status=status.HTTP_200_OK)
+            }
+            
+            # Add cart merge information if available
+            if merged_cart_info:
+                response_data["cart_merge"] = merged_cart_info
+            
+            return Response(response_data, status=status.HTTP_200_OK)
             
         except Exception as e:
             logger.error(f"Login error: {str(e)}")
@@ -126,6 +144,127 @@ class LoginView(APIView):
                 {"error": str(e)}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
+    
+    def merge_guest_cart_with_user_cart(self, user, guest_cart):
+        """
+        Merge guest cart with user's existing cart
+        Returns information about the merge operation
+        """
+        # Get or create user's cart
+        user_cart, created = Cart.objects.get_or_create(user=user)
+        
+        # Get existing cart items
+        existing_cart_items = CartItem.objects.filter(cart=user_cart).select_related('item', 'size')
+        
+        # Create a lookup dict for existing items (item_id + size_id as key)
+        existing_items_dict = {}
+        for cart_item in existing_cart_items:
+            key = f"{cart_item.item.id}_{cart_item.size.id}"
+            existing_items_dict[key] = cart_item
+        
+        # Process guest cart items
+        merged_items = []
+        added_items = []
+        updated_items = []
+        failed_items = []
+        
+        for guest_item in guest_cart.get('items', []):
+            try:
+                # Validate item and size exist
+                item = Item.objects.get(id=guest_item['id'])
+                size = ItemSize.objects.get(id=guest_item['size_id'])
+                
+                # Check stock availability
+                requested_quantity = guest_item['quantity']
+                if requested_quantity > size.quantity:
+                    failed_items.append({
+                        'item_name': item.name,
+                        'size': size.size,
+                        'requested_quantity': requested_quantity,
+                        'available_quantity': size.quantity,
+                        'reason': 'insufficient_stock'
+                    })
+                    continue
+                
+                key = f"{item.id}_{size.id}"
+                
+                if key in existing_items_dict:
+                    # Item already exists in user cart - merge quantities
+                    existing_cart_item = existing_items_dict[key]
+                    old_quantity = existing_cart_item.quantity
+                    
+                    # Strategy: Sum quantities, but respect stock limits
+                    new_quantity = old_quantity + requested_quantity
+                    
+                    if new_quantity > size.quantity:
+                        # If sum exceeds stock, use maximum available
+                        new_quantity = size.quantity
+                        failed_items.append({
+                            'item_name': item.name,
+                            'size': size.size,
+                            'requested_quantity': requested_quantity,
+                            'existing_quantity': old_quantity,
+                            'final_quantity': new_quantity,
+                            'reason': 'partial_merge_due_to_stock'
+                        })
+                    
+                    existing_cart_item.quantity = new_quantity
+                    existing_cart_item.save()
+                    
+                    updated_items.append({
+                        'item_name': item.name,
+                        'size': size.size,
+                        'old_quantity': old_quantity,
+                        'added_quantity': requested_quantity,
+                        'final_quantity': new_quantity
+                    })
+                    
+                else:
+                    # New item - add to user cart
+                    new_cart_item = CartItem.objects.create(
+                        cart=user_cart,
+                        item=item,
+                        size=size,
+                        quantity=requested_quantity
+                    )
+                    
+                    added_items.append({
+                        'item_name': item.name,
+                        'size': size.size,
+                        'quantity': requested_quantity
+                    })
+                
+                merged_items.append({
+                    'item_id': item.id,
+                    'item_name': item.name,
+                    'size': size.size,
+                    'quantity': requested_quantity
+                })
+                
+            except (Item.DoesNotExist, ItemSize.DoesNotExist):
+                failed_items.append({
+                    'item_id': guest_item.get('id'),
+                    'size_id': guest_item.get('size_id'),
+                    'quantity': guest_item.get('quantity'),
+                    'reason': 'item_not_found'
+                })
+            except Exception as item_error:
+                logger.error(f"Error processing guest cart item: {str(item_error)}")
+                failed_items.append({
+                    'item_id': guest_item.get('id'),
+                    'size_id': guest_item.get('size_id'),
+                    'quantity': guest_item.get('quantity'),
+                    'reason': 'processing_error'
+                })
+        
+        return {
+            'success': True,
+            'total_guest_items': len(guest_cart.get('items', [])),
+            'added_items': added_items,
+            'updated_items': updated_items,
+            'failed_items': failed_items,
+            'message': f"Cart merge completed. Added {len(added_items)} new items, updated {len(updated_items)} existing items."
+        }
 
 class VerifyTokenView(APIView):
     permission_classes = [IsAuthenticated]
