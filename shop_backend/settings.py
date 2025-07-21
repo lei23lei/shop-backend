@@ -26,8 +26,7 @@ else:
     ALLOWED_HOSTS = [
         'api.petershop.shop', 
         '34.59.35.32',
-        # Add your Render URL here after deployment
-        # Example: 'your-app-name-abc123.onrender.com'
+        'shop-backend-7uob.onrender.com',  # Your Render URL
         os.getenv('BACKEND_URL'),
     ]
 
@@ -197,6 +196,7 @@ else:
         'https://www.petershop.shop',
         'https://petershop.shop',
         'https://api.petershop.shop',
+        'https://shop-backend-7uob.onrender.com',  # Your Render URL
     ]
 
 SECURE_BROWSER_XSS_FILTER = True
