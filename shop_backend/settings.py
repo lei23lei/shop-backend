@@ -23,7 +23,12 @@ DEBUG = os.getenv('DEBUG', 'False') == 'True'
 if DEBUG:
     ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
 else:
-    ALLOWED_HOSTS = ['api.petershop.shop', '34.59.35.32']
+    ALLOWED_HOSTS = [
+        'api.petershop.shop', 
+        '34.59.35.32',
+        # Add your Render URL here after deployment
+        # Example: 'your-app-name-abc123.onrender.com'
+    ]
 
 # Application definition
 INSTALLED_APPS = [
