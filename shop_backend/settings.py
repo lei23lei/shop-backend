@@ -28,6 +28,7 @@ else:
         '34.59.35.32',
         # Add your Render URL here after deployment
         # Example: 'your-app-name-abc123.onrender.com'
+        os.getenv('BACKEND_URL'),
     ]
 
 # Application definition
