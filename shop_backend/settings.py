@@ -28,6 +28,8 @@ else:
         '34.59.35.32',
         'shop-backend-7uob.onrender.com',  # Your Render URL
         os.getenv('BACKEND_URL'),
+        # Add wildcard for Render subdomains
+        '.onrender.com',
     ]
 
 # Application definition
