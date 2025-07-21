@@ -21,7 +21,7 @@ DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 # Fixed ALLOWED_HOSTS - removed www.petershop.shop as it's frontend
 if DEBUG:
-    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', os.getenv('BACKEND_URL')]
 else:
     ALLOWED_HOSTS = [
         'api.petershop.shop', 
